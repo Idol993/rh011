@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FolderOpen,
@@ -17,9 +18,10 @@ import {
   X,
   File,
   Sparkles,
+  Upload as UploadIcon,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
-import type { MaterialItem, NlpAnalysis, PrecheckResult } from '@/types';
+import type { MaterialItem, NlpAnalysis, PrecheckResult, ServiceItem } from '@/types';
 import { cn } from '@/lib/utils';
 
 const categories = [
@@ -34,6 +36,19 @@ const categories = [
   { id: '教育', name: '教育', icon: FileText },
 ];
 
+const serviceList: ServiceItem[] = [
+  { id: 's001', name: '个体工商户营业执照办理', category: '企业登记', department: '市场监督管理局', requiredMaterials: ['身份证原件', '经营场所证明', '个体工商户登记申请书'], isParallel: false, processingDays: 3, description: '' },
+  { id: 's002', name: '企业法人营业执照设立登记', category: '企业登记', department: '市场监督管理局', requiredMaterials: ['公司章程', '法人身份证', '验资报告', '住所证明'], isParallel: true, processingDays: 5, description: '' },
+  { id: 's003', name: '个人社保缴纳登记', category: '社会保障', department: '人力资源和社会保障局', requiredMaterials: ['身份证', '户口本', '就业登记证'], isParallel: false, processingDays: 2, description: '' },
+  { id: 's004', name: '社保卡办理', category: '社会保障', department: '人力资源和社会保障局', requiredMaterials: ['身份证', '一寸照片', '社保登记表'], isParallel: false, processingDays: 15, description: '' },
+  { id: 's005', name: '不动产首次登记', category: '不动产', department: '自然资源和规划局', requiredMaterials: ['身份证', '不动产权属来源证明', '契税完税证明', '房屋测绘报告'], isParallel: true, processingDays: 7, description: '' },
+  { id: 's006', name: '建设工程规划许可证', category: '工程建设', department: '住房和城乡建设局', requiredMaterials: ['建设项目批准文件', '建设用地规划许可证', '设计方案审查意见', '施工图'], isParallel: true, processingDays: 10, description: '' },
+  { id: 's007', name: '医师执业注册', category: '医疗卫生', department: '卫生健康委员会', requiredMaterials: ['身份证', '医师资格证', '健康体检表', '聘用证明'], isParallel: false, processingDays: 5, description: '' },
+  { id: 's008', name: '户口迁移审批', category: '户籍管理', department: '公安局', requiredMaterials: ['身份证', '户口本', '迁移申请书', '迁入地同意证明'], isParallel: false, processingDays: 7, description: '' },
+  { id: 's009', name: '车辆购置税申报', category: '税务', department: '税务局', requiredMaterials: ['身份证', '车辆合格证', '购车发票', '保险单'], isParallel: false, processingDays: 1, description: '' },
+  { id: 's010', name: '适龄儿童入学报名', category: '教育', department: '教育局', requiredMaterials: ['户口本', '房产证', '出生证明', '预防接种证'], isParallel: true, processingDays: 15, description: '' },
+];
+
 const steps = [
   { id: 1, name: '选择事项', icon: FolderOpen },
   { id: 2, name: '填写表单', icon: FileText },
@@ -42,27 +57,28 @@ const steps = [
   { id: 5, name: '提交申请', icon: Send },
 ];
 
-const mockNlpResult: NlpAnalysis = {
+const mockNlpComplete: NlpAnalysis = {
   isSemanticComplete: true,
   missingInfo: [],
   confidence: 0.96,
 };
 
-const mockPrecheckResult: PrecheckResult = {
-  isComplete: false,
-  missingMaterials: ['契税完税证明'],
-  missingInfo: ['个体工商户登记申请书缺少经营者签字'],
-  suggestions: [
-    '请在登记申请书右下角经营者签名处签字后重新上传',
-    '请先前往税务局或通过电子税务局缴纳契税，获取完税证明后上传',
-  ],
+const mockNlpIncomplete: NlpAnalysis = {
+  isSemanticComplete: false,
+  missingInfo: ['经营者签字'],
+  confidence: 0.82,
 };
 
 export default function CitizenApply() {
-  const { applications, addApplication, currentUser } = useAppStore();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { addApplication, currentUser, applications } = useAppStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingMaterialId, setUploadingMaterialId] = useState<string | null>(null);
+
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
@@ -73,44 +89,78 @@ export default function CitizenApply() {
     phone: currentUser?.phone || '',
     address: '',
   });
+  const [materials, setMaterials] = useState<MaterialItem[]>([]);
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
-  const [materials, setMaterials] = useState<MaterialItem[]>([
-    {
-      id: 'm1',
-      name: '身份证原件',
-      fileName: '身份证正面.jpg',
-      ocrResult: '姓名：张伟民，身份证号：310101198503124521',
-      nlpResult: mockNlpResult,
-      isComplete: true,
-    },
-    {
-      id: 'm2',
-      name: '经营场所证明',
-      fileName: '租赁合同.pdf',
-      ocrResult: '出租方：上海XX商业管理有限公司，承租方：张伟民',
-      nlpResult: mockNlpResult,
-      isComplete: true,
-    },
-    {
-      id: 'm3',
-      name: '个体工商户登记申请书',
-      fileName: '登记申请书.pdf',
-      ocrResult: '字号名称：上海民健便民超市，经营场所：浦东新区张江路168号',
-      nlpResult: { isSemanticComplete: false, missingInfo: ['经营者签字'], confidence: 0.82 },
-      isComplete: false,
-      missingTips: '缺少经营者签字栏',
-    },
-    {
-      id: 'm4',
-      name: '契税完税证明',
-      fileName: '',
-      isComplete: false,
-      missingTips: '请上传契税完税证明',
-    },
-  ]);
+  const selectedService = useMemo(
+    () => serviceList.find((s) => s.id === selectedServiceId) || null,
+    [selectedServiceId]
+  );
+
+  const filteredServices = useMemo(() => {
+    if (selectedCategory === 'all') return serviceList;
+    return serviceList.filter((s) => s.category === selectedCategory);
+  }, [selectedCategory]);
 
   useEffect(() => {
-    if (currentStep === 4 && !showPrecheckResult) {
+    const serviceName = searchParams.get('service');
+    const category = searchParams.get('category');
+    if (category) {
+      setSelectedCategory(category);
+    }
+    if (serviceName) {
+      const found = serviceList.find(
+        (s) => s.name.includes(serviceName) || s.category === serviceName
+      );
+      if (found) {
+        setSelectedServiceId(found.id);
+        setSelectedCategory(found.category);
+      }
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (selectedService) {
+      const newMaterials: MaterialItem[] = selectedService.requiredMaterials.map((name, index) => ({
+        id: `mat-${selectedService.id}-${index}`,
+        name,
+        fileName: '',
+        isComplete: false,
+        missingTips: `请上传${name}`,
+      }));
+      setMaterials(newMaterials);
+      setShowPrecheckResult(false);
+      setOcrProgress(0);
+    }
+  }, [selectedServiceId, selectedService]);
+
+  const precheckResult: PrecheckResult = useMemo(() => {
+    const missingMaterials: string[] = [];
+    const missingInfo: string[] = [];
+    const suggestions: string[] = [];
+
+    materials.forEach((m) => {
+      if (!m.isComplete) {
+        if (!m.fileName) {
+          missingMaterials.push(m.name);
+          suggestions.push(`请上传${m.name}的扫描件或照片`);
+        } else if (m.nlpResult && !m.nlpResult.isSemanticComplete) {
+          missingInfo.push(`${m.name}：${m.nlpResult.missingInfo.join('、')}`);
+          suggestions.push(`请补全${m.name}中的缺失信息后重新上传`);
+        }
+      }
+    });
+
+    return {
+      isComplete: missingMaterials.length === 0 && missingInfo.length === 0,
+      missingMaterials,
+      missingInfo,
+      suggestions,
+    };
+  }, [materials]);
+
+  useEffect(() => {
+    if (currentStep === 4 && !showPrecheckResult && !isOcrProcessing) {
       setIsOcrProcessing(true);
       setOcrProgress(0);
       const timer = setInterval(() => {
@@ -121,12 +171,30 @@ export default function CitizenApply() {
             setShowPrecheckResult(true);
             return 100;
           }
-          return prev + 5;
+          return prev + 4;
         });
-      }, 100);
+      }, 80);
       return () => clearInterval(timer);
     }
-  }, [currentStep, showPrecheckResult]);
+  }, [currentStep, showPrecheckResult, isOcrProcessing]);
+
+  const simulateUpload = (materialId: string, fileName: string) => {
+    setMaterials((prev) =>
+      prev.map((m) => {
+        if (m.id === materialId) {
+          return {
+            ...m,
+            fileName,
+            isComplete: true,
+            missingTips: undefined,
+            ocrResult: `识别成功：${fileName} 的内容已通过OCR提取`,
+            nlpResult: mockNlpComplete,
+          };
+        }
+        return m;
+      })
+    );
+  };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -134,37 +202,96 @@ export default function CitizenApply() {
     const files = e.dataTransfer.files;
     if (files.length > 0) {
       const file = files[0];
-      const incompleteMaterial = materials.find((m) => !m.isComplete && !m.fileName);
-      if (incompleteMaterial) {
-        setMaterials((prev) =>
-          prev.map((m) =>
-            m.id === incompleteMaterial.id
-              ? { ...m, fileName: file.name, isComplete: true, missingTips: undefined }
-              : m
-          )
-        );
+      const incomplete = materials.find((m) => !m.isComplete);
+      if (incomplete) {
+        simulateUpload(incomplete.id, file.name);
       }
     }
   };
 
-  const handleSubmit = () => {
-    if (currentUser) {
-      addApplication({
-        caseNo: `YW${Date.now().toString().slice(-8)}`,
-        serviceItemId: 's001',
-        serviceItemName: selectedService || '个体工商户营业执照办理',
-        applicantId: currentUser.id,
-        applicantName: currentUser.name,
-        applicantPhone: currentUser.phone,
-        materials,
-        status: showPrecheckResult && mockPrecheckResult.isComplete ? 'submitted' : 'draft',
-        precheckResult: mockPrecheckResult,
-        assignees: [],
-        currentStep: currentStep,
-        flowNodes: [],
-        deadline: '',
-      });
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (uploadingMaterialId) {
+        simulateUpload(uploadingMaterialId, file.name);
+        setUploadingMaterialId(null);
+      } else {
+        const incomplete = materials.find((m) => !m.isComplete);
+        if (incomplete) {
+          simulateUpload(incomplete.id, file.name);
+        }
+      }
     }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const openFilePicker = (materialId?: string) => {
+    if (materialId) {
+      setUploadingMaterialId(materialId);
+    } else {
+      setUploadingMaterialId(null);
+    }
+    fileInputRef.current?.click();
+  };
+
+  const handleSubmit = () => {
+    if (!currentUser || !selectedService) return;
+
+    const caseNo = `YW${new Date().getFullYear()}${String(Date.now()).slice(-8)}`;
+    const days = selectedService.processingDays;
+    const deadline = new Date();
+    deadline.setDate(deadline.getDate() + days);
+
+    const assignees = [
+      { id: 'clerk-001', name: '李晓婷', department: selectedService.department, role: 'clerk' as const },
+    ];
+    if (selectedService.isParallel) {
+      assignees.push({ id: 'clerk-002', name: '王建国', department: '住房和城乡建设局', role: 'clerk' as const });
+    }
+
+    addApplication({
+      caseNo,
+      serviceItemId: selectedService.id,
+      serviceItemName: selectedService.name,
+      applicantId: currentUser.id,
+      applicantName: currentUser.name,
+      applicantPhone: currentUser.phone,
+      materials,
+      status: precheckResult.isComplete ? 'submitted' : 'draft',
+      precheckResult,
+      assignees,
+      currentStep: 5,
+      flowNodes: [
+        {
+          id: 'node-submit',
+          name: '提交申请',
+          type: 'serial' as const,
+          status: 'completed' as const,
+          assignee: currentUser.name,
+          assigneeName: currentUser.name,
+          startedAt: new Date().toISOString(),
+          completedAt: new Date().toISOString(),
+        },
+        {
+          id: 'node-review',
+          name: '窗口受理',
+          type: 'serial' as const,
+          status: 'pending' as const,
+          assignee: 'clerk-001',
+          assigneeName: '李晓婷',
+        },
+      ],
+      deadline: deadline.toLocaleDateString('zh-CN'),
+      warningLevel: 'none' as const,
+    });
+
+    setSubmitSuccess(true);
+    setTimeout(() => {
+      navigate('/citizen/applications');
+    }, 2000);
   };
 
   const resetPrecheck = () => {
@@ -174,15 +301,45 @@ export default function CitizenApply() {
   };
 
   const canProceed = () => {
-    if (currentStep === 1) return selectedService !== null;
+    if (currentStep === 1) return selectedServiceId !== null;
     if (currentStep === 2) return formData.name && formData.idCard && formData.phone;
-    if (currentStep === 3) return materials.filter((m) => m.isComplete).length >= 2;
+    if (currentStep === 3) return materials.some((m) => m.isComplete);
     if (currentStep === 4) return showPrecheckResult;
     return true;
   };
 
+  if (submitSuccess) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-primary-50 p-6 flex items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 200, delay: 0.1 }}
+            className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-green-400 to-emerald-500 shadow-xl shadow-green-500/30"
+          >
+            <CheckCircle2 className="h-12 w-12 text-white" />
+          </motion.div>
+          <h2 className="mb-2 text-2xl font-bold text-gray-800">提交成功！</h2>
+          <p className="text-gray-500">您的{selectedService?.name}申请已提交，即将跳转到我的办件...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-50 via-white to-primary-50 p-6">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png"
+        className="hidden"
+        onChange={handleFileSelect}
+      />
       <div className="mx-auto max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -292,20 +449,15 @@ export default function CitizenApply() {
                   >
                     <h3 className="mb-4 text-lg font-semibold text-gray-800">请选择办理事项</h3>
                     <div className="grid gap-4 md:grid-cols-2">
-                      {[
-                        { id: 's001', name: '个体工商户营业执照办理', dept: '市场监督管理局', days: 3 },
-                        { id: 's002', name: '企业法人营业执照设立登记', dept: '市场监督管理局', days: 5, parallel: true },
-                        { id: 's003', name: '个人社保缴纳登记', dept: '人力资源和社会保障局', days: 2 },
-                        { id: 's004', name: '社保卡办理', dept: '人力资源和社会保障局', days: 15 },
-                      ].map((service) => (
+                      {filteredServices.map((service) => (
                         <motion.div
                           key={service.id}
                           whileHover={{ y: -4, scale: 1.01 }}
                           whileTap={{ scale: 0.99 }}
-                          onClick={() => setSelectedService(service.id)}
+                          onClick={() => setSelectedServiceId(service.id)}
                           className={cn(
                             'cursor-pointer rounded-xl border-2 p-4 transition-all',
-                            selectedService === service.id
+                            selectedServiceId === service.id
                               ? 'border-primary-500 bg-primary-50 shadow-md shadow-primary-500/20'
                               : 'border-gray-100 hover:border-primary-200 hover:bg-gray-50'
                           )}
@@ -313,16 +465,16 @@ export default function CitizenApply() {
                           <div className="flex items-start justify-between">
                             <div>
                               <h4 className="font-semibold text-gray-800">{service.name}</h4>
-                              <p className="mt-1 text-sm text-gray-500">{service.dept}</p>
+                              <p className="mt-1 text-sm text-gray-500">{service.department}</p>
                             </div>
-                            {service.parallel && (
+                            {service.isParallel && (
                               <span className="rounded-full bg-purple-100 px-2 py-1 text-xs font-medium text-purple-600">
                                 并联审批
                               </span>
                             )}
                           </div>
                           <div className="mt-3 flex items-center text-sm text-gray-500">
-                            <span>承诺办结：{service.days} 个工作日</span>
+                            <span>承诺办结：{service.processingDays} 个工作日</span>
                           </div>
                         </motion.div>
                       ))}
@@ -372,7 +524,9 @@ export default function CitizenApply() {
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: -20 }}
                   >
-                    <h3 className="mb-4 text-lg font-semibold text-gray-800">上传申请材料</h3>
+                    <h3 className="mb-4 text-lg font-semibold text-gray-800">
+                      上传申请材料 <span className="text-sm font-normal text-gray-400">（共 {materials.length} 项）</span>
+                    </h3>
 
                     <motion.div
                       onDragOver={(e) => {
@@ -393,7 +547,10 @@ export default function CitizenApply() {
                       <Upload className="mx-auto mb-3 h-12 w-12 text-primary-500" />
                       <p className="font-medium text-gray-700">拖拽文件到此处上传</p>
                       <p className="mt-1 text-sm text-gray-500">支持 PDF、JPG、PNG 格式，单个文件不超过 10MB</p>
-                      <button className="mt-4 rounded-xl bg-primary-500 px-6 py-2 text-white transition-colors hover:bg-primary-600">
+                      <button
+                        onClick={() => openFilePicker()}
+                        className="mt-4 rounded-xl bg-primary-500 px-6 py-2 text-white transition-colors hover:bg-primary-600"
+                      >
                         选择文件
                       </button>
                     </motion.div>
@@ -437,13 +594,13 @@ export default function CitizenApply() {
                               {material.fileName && (
                                 <p className="text-sm text-gray-500">已上传：{material.fileName}</p>
                               )}
-                              {material.missingTips && (
+                              {material.missingTips && !material.isComplete && (
                                 <p className="text-sm text-red-500">
                                   <AlertCircle className="mr-1 inline h-3 w-3" />
                                   {material.missingTips}
                                 </p>
                               )}
-                              {material.ocrResult && material.nlpResult && (
+                              {material.ocrResult && material.nlpResult && material.isComplete && (
                                 <div className="mt-2 flex items-center space-x-3 text-xs">
                                   <span className="flex items-center text-blue-600">
                                     <Scan className="mr-1 h-3 w-3" />
@@ -457,11 +614,33 @@ export default function CitizenApply() {
                               )}
                             </div>
                           </div>
-                          {material.fileName && (
-                            <button className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-red-500">
-                              <X className="h-4 w-4" />
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2">
+                            {!material.isComplete && (
+                              <button
+                                onClick={() => openFilePicker(material.id)}
+                                className="flex items-center gap-1 rounded-lg bg-primary-500 px-4 py-2 text-sm text-white hover:bg-primary-600 transition-colors"
+                              >
+                                <UploadIcon className="h-4 w-4" />
+                                上传
+                              </button>
+                            )}
+                            {material.fileName && (
+                              <button
+                                onClick={() =>
+                                  setMaterials((prev) =>
+                                    prev.map((m) =>
+                                      m.id === material.id
+                                        ? { ...m, fileName: '', isComplete: false, missingTips: `请上传${m.name}`, ocrResult: undefined, nlpResult: undefined }
+                                        : m
+                                    )
+                                  )
+                                }
+                                className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-red-500"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
                         </motion.div>
                       ))}
                     </div>
@@ -495,11 +674,11 @@ export default function CitizenApply() {
                         <div className="mt-6">
                           <div className="mb-2 flex justify-between text-sm">
                             <span className="text-gray-600">预审进度</span>
-                            <span className="font-medium text-primary-600">{ocrProgress}%</span>
+                            <span className="font-medium text-primary-600">{Math.min(100, ocrProgress)}%</span>
                           </div>
                           <div className="h-3 overflow-hidden rounded-full bg-primary-100">
                             <motion.div
-                              animate={{ width: `${ocrProgress}%` }}
+                              animate={{ width: `${Math.min(100, ocrProgress)}%` }}
                               className="h-full rounded-full bg-gradient-to-r from-primary-500 to-purple-500"
                             />
                           </div>
@@ -516,7 +695,7 @@ export default function CitizenApply() {
                         animate={{ opacity: 1, scale: 1 }}
                         className={cn(
                           'rounded-2xl border p-6',
-                          mockPrecheckResult.isComplete
+                          precheckResult.isComplete
                             ? 'border-green-200 bg-green-50/50'
                             : 'border-amber-200 bg-amber-50/50'
                         )}
@@ -525,12 +704,12 @@ export default function CitizenApply() {
                           <div
                             className={cn(
                               'flex h-14 w-14 items-center justify-center rounded-full',
-                              mockPrecheckResult.isComplete
+                              precheckResult.isComplete
                                 ? 'bg-gradient-to-br from-green-500 to-emerald-500'
                                 : 'bg-gradient-to-br from-amber-500 to-orange-500'
                             )}
                           >
-                            {mockPrecheckResult.isComplete ? (
+                            {precheckResult.isComplete ? (
                               <FileCheck className="h-7 w-7 text-white" />
                             ) : (
                               <AlertCircle className="h-7 w-7 text-white" />
@@ -538,21 +717,21 @@ export default function CitizenApply() {
                           </div>
                           <div>
                             <h4 className="text-xl font-bold text-gray-800">
-                              {mockPrecheckResult.isComplete ? '预审通过！' : '一次性缺件告知'}
+                              {precheckResult.isComplete ? '预审通过！' : '一次性缺件告知'}
                             </h4>
                             <p className="text-sm text-gray-500">
-                              {mockPrecheckResult.isComplete
+                              {precheckResult.isComplete
                                 ? '您的申请材料齐全，可以提交'
                                 : '请根据以下提示补正材料后重新提交'}
                             </p>
                           </div>
                         </div>
 
-                        {mockPrecheckResult.missingMaterials.length > 0 && (
+                        {precheckResult.missingMaterials.length > 0 && (
                           <div className="mb-4">
                             <h5 className="mb-2 font-semibold text-gray-700">缺少的材料：</h5>
                             <ul className="space-y-2">
-                              {mockPrecheckResult.missingMaterials.map((item, i) => (
+                              {precheckResult.missingMaterials.map((item, i) => (
                                 <motion.li
                                   key={i}
                                   initial={{ opacity: 0, x: -10 }}
@@ -568,16 +747,16 @@ export default function CitizenApply() {
                           </div>
                         )}
 
-                        {mockPrecheckResult.missingInfo.length > 0 && (
+                        {precheckResult.missingInfo.length > 0 && (
                           <div className="mb-4">
                             <h5 className="mb-2 font-semibold text-gray-700">材料信息不完整：</h5>
                             <ul className="space-y-2">
-                              {mockPrecheckResult.missingInfo.map((item, i) => (
+                              {precheckResult.missingInfo.map((item, i) => (
                                 <motion.li
                                   key={i}
                                   initial={{ opacity: 0, x: -10 }}
                                   animate={{ opacity: 1, x: 0 }}
-                                  transition={{ delay: (mockPrecheckResult.missingMaterials.length + i) * 0.1 }}
+                                  transition={{ delay: (precheckResult.missingMaterials.length + i) * 0.1 }}
                                   className="flex items-center space-x-2 rounded-lg bg-orange-50 px-4 py-2 text-orange-700"
                                 >
                                   <AlertCircle className="h-4 w-4 flex-shrink-0" />
@@ -588,11 +767,11 @@ export default function CitizenApply() {
                           </div>
                         )}
 
-                        {mockPrecheckResult.suggestions.length > 0 && (
+                        {precheckResult.suggestions.length > 0 && (
                           <div className="mb-4">
                             <h5 className="mb-2 font-semibold text-gray-700">补正建议：</h5>
                             <ul className="space-y-2">
-                              {mockPrecheckResult.suggestions.map((item, i) => (
+                              {precheckResult.suggestions.map((item, i) => (
                                 <motion.li
                                   key={i}
                                   initial={{ opacity: 0, x: -10 }}
@@ -608,7 +787,7 @@ export default function CitizenApply() {
                           </div>
                         )}
 
-                        {!mockPrecheckResult.isComplete && (
+                        {!precheckResult.isComplete && (
                           <motion.button
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
@@ -646,8 +825,8 @@ export default function CitizenApply() {
                           </div>
                           <div className="col-span-2">
                             <span className="text-gray-500">申请事项：</span>
-                            <span className="text-gray-800">
-                              {selectedService || '个体工商户营业执照办理'}
+                            <span className="text-gray-800 font-medium">
+                              {selectedService?.name || '未选择'}
                             </span>
                           </div>
                         </div>
@@ -659,9 +838,15 @@ export default function CitizenApply() {
                             <div key={m.id} className="flex items-center justify-between text-sm">
                               <span className="text-gray-700">{m.name}</span>
                               {m.isComplete ? (
-                                <span className="text-green-600">已上传</span>
+                                <span className="flex items-center gap-1 text-green-600">
+                                  <CheckCircle2 className="h-4 w-4" />
+                                  已上传
+                                </span>
                               ) : (
-                                <span className="text-red-500">待补正</span>
+                                <span className="flex items-center gap-1 text-red-500">
+                                  <AlertCircle className="h-4 w-4" />
+                                  待补正
+                                </span>
                               )}
                             </div>
                           ))}
@@ -716,7 +901,13 @@ export default function CitizenApply() {
                     whileHover={{ scale: 1.02 }}
                     whileTap={{ scale: 0.98 }}
                     onClick={handleSubmit}
-                    className="flex items-center space-x-2 rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 px-8 py-3 text-white shadow-md shadow-green-500/30 transition-all hover:shadow-lg hover:shadow-green-500/40"
+                    disabled={!precheckResult.isComplete}
+                    className={cn(
+                      'flex items-center space-x-2 rounded-xl px-8 py-3 shadow-md transition-all',
+                      precheckResult.isComplete
+                        ? 'bg-gradient-to-r from-green-500 to-emerald-500 text-white shadow-green-500/30 hover:shadow-lg hover:shadow-green-500/40'
+                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    )}
                   >
                     <Send className="h-5 w-5" />
                     <span>提交申请</span>

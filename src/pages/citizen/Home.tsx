@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
   FileText,
@@ -66,7 +67,16 @@ const itemVariants = {
 };
 
 export default function CitizenHome() {
+  const navigate = useNavigate();
   const { currentUser, applications, certificates, notifications } = useAppStore();
+
+  const handleQuickEntry = (name: string, category: string) => {
+    navigate(`/citizen/apply?service=${encodeURIComponent(name)}&category=${encodeURIComponent(category)}`);
+  };
+
+  const handleRecentAppClick = (app: Application) => {
+    navigate(`/citizen/applications/${app.id}`);
+  };
 
   const totalCount = applications.length;
   const pendingCount = applications.filter(
@@ -138,6 +148,7 @@ export default function CitizenHome() {
                 variants={itemVariants}
                 whileHover={{ y: -4, scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
+                onClick={() => handleQuickEntry(entry.name, entry.category)}
                 className="group cursor-pointer"
               >
                 <div
@@ -207,7 +218,10 @@ export default function CitizenHome() {
         <motion.div variants={itemVariants}>
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-semibold text-gray-800">最近办件</h2>
-            <button className="flex items-center text-sm text-primary-600 hover:text-primary-700">
+            <button
+              onClick={() => navigate('/citizen/applications')}
+              className="flex items-center text-sm text-primary-600 hover:text-primary-700 transition-colors"
+            >
               查看全部 <ChevronRight className="ml-1 h-4 w-4" />
             </button>
           </div>
@@ -224,6 +238,7 @@ export default function CitizenHome() {
                     key={app.id}
                     variants={itemVariants}
                     whileHover={{ backgroundColor: 'rgba(30, 90, 168, 0.03)' }}
+                    onClick={() => handleRecentAppClick(app)}
                     className="flex cursor-pointer items-center justify-between p-4 transition-colors"
                   >
                     <div className="flex items-center space-x-4">

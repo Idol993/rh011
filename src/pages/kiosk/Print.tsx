@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
@@ -22,8 +23,10 @@ import { Certificate, PrintLog } from '@/types';
 import { mockPrintLogs } from '@/data/mockData';
 
 export default function KioskPrint() {
+  const navigate = useNavigate();
   const certificates = useAppStore((state) => state.certificates);
-  const printLogs = mockPrintLogs;
+  const addPrintLog = useAppStore((state) => state.addPrintLog);
+  const printLogs = useAppStore((state) => state.printLogs);
 
   const [selectedCerts, setSelectedCerts] = useState<Set<string>>(new Set());
   const [copiesMap, setCopiesMap] = useState<Record<string, number>>({});
@@ -79,8 +82,33 @@ export default function KioskPrint() {
         clearInterval(interval);
         setIsPrinting(false);
         setPrintComplete(true);
-        const lastLog = printLogs[printLogs.length - 1] || null;
-        setLastPrintLog(lastLog);
+
+        const selectedList = Array.from(selectedCerts);
+        const certNames = selectedList
+          .map((id) => userCertificates.find((c) => c.id === id)?.type)
+          .filter(Boolean)
+          .join('、');
+        const certNos = selectedList
+          .map((id) => userCertificates.find((c) => c.id === id)?.certificateNo)
+          .filter(Boolean)
+          .join(', ');
+        const totalCopiesVal = selectedList.reduce(
+          (sum, id) => sum + (copiesMap[id] || 1),
+          0
+        );
+
+        const newLog: PrintLog = {
+          id: `pl-${Date.now()}`,
+          kioskId: 'K001',
+          idCardNo: '310101********4521',
+          certificateType: certNames || '证明材料',
+          certificateNo: certNos || '',
+          printedAt: new Date().toLocaleString('zh-CN'),
+          copies: totalCopiesVal,
+          status: 'success',
+        };
+        addPrintLog(newLog);
+        setLastPrintLog(newLog);
       }
     }, 60);
 
@@ -194,7 +222,10 @@ export default function KioskPrint() {
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center justify-between mb-8"
         >
-          <button className="flex items-center gap-2 text-white/90 hover:text-white text-lg transition-colors group">
+          <button
+            onClick={() => navigate('/kiosk')}
+            className="flex items-center gap-2 text-white/90 hover:text-white text-lg transition-colors group"
+          >
             <div className="w-11 h-11 rounded-xl bg-white/10 backdrop-blur border border-white/20 flex items-center justify-center group-hover:bg-white/20 transition-colors">
               <ArrowLeft className="w-5 h-5" />
             </div>
@@ -613,7 +644,10 @@ export default function KioskPrint() {
                               <Printer className="w-5 h-5" />
                               继续打印
                             </button>
-                            <button className="flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-primary-500 text-white text-lg font-semibold shadow-xl shadow-cyan-500/40 hover:shadow-cyan-500/60 hover:scale-[1.02] transition-all">
+                            <button
+                              onClick={() => navigate('/kiosk')}
+                              className="flex items-center gap-2 px-8 py-4 rounded-2xl bg-gradient-to-r from-cyan-500 to-primary-500 text-white text-lg font-semibold shadow-xl shadow-cyan-500/40 hover:shadow-cyan-500/60 hover:scale-[1.02] transition-all"
+                            >
                               <Home className="w-5 h-5" />
                               返回首页
                             </button>

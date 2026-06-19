@@ -7,6 +7,7 @@ import {
   Review,
   Notification,
   ApplicationStatus,
+  PrintLog,
 } from '@/types';
 import { mockData } from '@/data/mockData';
 
@@ -52,12 +53,18 @@ interface NotificationState {
   addNotification: (notification: Omit<Notification, 'id' | 'sentAt' | 'isRead'>) => void;
 }
 
+interface PrintLogState {
+  printLogs: PrintLog[];
+  addPrintLog: (log: PrintLog) => void;
+}
+
 type AppStore = AuthState &
   ApplicationState &
   WarningState &
   CertificateState &
   ReviewState &
-  NotificationState;
+  NotificationState &
+  PrintLogState;
 
 export const useAppStore = create<AppStore>((set, get) => ({
   currentUser: mockData.currentUser ?? null,
@@ -68,6 +75,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   reviews: mockData.reviews ?? [],
   notifications: mockData.notifications ?? [],
   unreadCount: mockData.notifications?.filter((n) => !n.isRead).length ?? 0,
+  printLogs: mockData.printLogs ?? [],
 
   login: (username: string, password: string) => {
     const user = mockData.users?.find(
@@ -207,6 +215,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set((state) => ({
       notifications: [newNotification, ...state.notifications],
       unreadCount: state.unreadCount + 1,
+    }));
+  },
+
+  addPrintLog: (log: PrintLog) => {
+    set((state) => ({
+      printLogs: [log, ...state.printLogs],
     }));
   },
 }));

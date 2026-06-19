@@ -72,6 +72,24 @@ export default function App() {
         <Route path="/kiosk" element={<KioskHome />} />
         <Route path="/kiosk/print" element={<KioskPrint />} />
 
+        <Route path="/app/citizen" element={<Navigate to="/citizen" replace />} />
+        <Route path="/app/citizen/apply" element={<Navigate to="/citizen/apply" replace />} />
+        <Route path="/app/citizen/applications" element={<Navigate to="/citizen/applications" replace />} />
+        <Route path="/app/citizen/applications/:id" element={<Navigate to="/citizen/applications/:id" replace />} />
+        <Route path="/app/citizen/review/:id" element={<Navigate to="/citizen/review/:id" replace />} />
+        <Route path="/app/citizen/certificates" element={<Navigate to="/citizen/certificates" replace />} />
+        <Route path="/app/workbench" element={<Navigate to="/workbench" replace />} />
+        <Route path="/app/workbench/cases" element={<Navigate to="/workbench/cases" replace />} />
+        <Route path="/app/workbench/cases/:id" element={<Navigate to="/workbench/cases/:id" replace />} />
+        <Route path="/app/workbench/parallel" element={<Navigate to="/workbench/parallel" replace />} />
+        <Route path="/app/supervisor" element={<Navigate to="/supervisor" replace />} />
+        <Route path="/app/supervisor/warnings" element={<Navigate to="/supervisor/warnings" replace />} />
+        <Route path="/app/supervisor/monitor" element={<Navigate to="/supervisor/monitor" replace />} />
+        <Route path="/app/supervisor/performance" element={<Navigate to="/supervisor/performance" replace />} />
+        <Route path="/app/dashboard" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/app/kiosk" element={<Navigate to="/kiosk" replace />} />
+        <Route path="/app/kiosk/print" element={<Navigate to="/kiosk/print" replace />} />
+
         <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
           <Route index element={<RoleRedirect />} />
 
