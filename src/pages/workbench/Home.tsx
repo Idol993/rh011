@@ -23,6 +23,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   pending: { label: '待签发', className: 'bg-amber-100 text-amber-700' },
   reviewing: { label: '审核中', className: 'bg-indigo-100 text-indigo-700' },
   approved: { label: '已通过', className: 'bg-green-100 text-green-700' },
+  making: { label: '待制证', className: 'bg-orange-100 text-orange-700' },
   rejected: { label: '已驳回', className: 'bg-red-100 text-red-700' },
   completed: { label: '已完成', className: 'bg-emerald-100 text-emerald-700' },
 };

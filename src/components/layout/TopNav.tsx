@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -24,11 +24,19 @@ const roleLabels: Record<string, string> = {
 export default function TopNav() {
   const navigate = useNavigate();
   const currentUser = useAppStore((state) => state.currentUser);
-  const notifications = useAppStore((state) => state.notifications);
-  const unreadCount = useAppStore((state) => state.unreadCount);
-  const logout = useAppStore((state) => state.logout);
+  const allNotifications = useAppStore((state) => state.notifications);
   const markAsRead = useAppStore((state) => state.markAsRead);
   const markAllAsRead = useAppStore((state) => state.markAllAsRead);
+  const logout = useAppStore((state) => state.logout);
+
+  const notifications = useMemo(() => {
+    if (!currentUser) return [];
+    return allNotifications.filter((n) => n.userId === currentUser.id);
+  }, [allNotifications, currentUser]);
+
+  const unreadCount = useMemo(() => {
+    return notifications.filter((n) => !n.isRead).length;
+  }, [notifications]);
 
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);

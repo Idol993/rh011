@@ -26,6 +26,7 @@ interface ApplicationState {
   setCurrentApplication: (application: Application | null) => void;
   addApplication: (application: Omit<Application, 'id' | 'createdAt'>) => void;
   updateApplicationStatus: (id: string, status: ApplicationStatus) => void;
+  updateApplication: (id: string, updates: Partial<Application>) => void;
   updateApplicationFlowNode: (appId: string, nodeId: string, updates: Partial<FlowNode>) => void;
 }
 
@@ -132,6 +133,18 @@ export const useAppStore = create<AppStore>((set, get) => ({
       currentApplication:
         state.currentApplication?.id === id
           ? { ...state.currentApplication, status }
+          : state.currentApplication,
+    }));
+  },
+
+  updateApplication: (id: string, updates: Partial<Application>) => {
+    set((state) => ({
+      applications: state.applications.map((app) =>
+        app.id === id ? { ...app, ...updates } : app
+      ),
+      currentApplication:
+        state.currentApplication?.id === id
+          ? { ...state.currentApplication, ...updates }
           : state.currentApplication,
     }));
   },

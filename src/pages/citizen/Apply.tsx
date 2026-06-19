@@ -72,11 +72,20 @@ const mockNlpIncomplete: NlpAnalysis = {
 export default function CitizenApply() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { addApplication, currentUser, applications, addNotification } = useAppStore();
+  const { addApplication, currentUser, applications, addNotification, updateApplication, updateApplicationFlowNode } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingMaterialId, setUploadingMaterialId] = useState<string | null>(null);
 
-  const [currentStep, setCurrentStep] = useState(1);
+  const appId = searchParams.get('id');
+  const action = searchParams.get('action');
+  const isRectifyMode = action === 'rectify' && !!appId;
+
+  const originalApp = useMemo(() => {
+    if (!appId) return null;
+    return applications.find((a) => a.id === appId) || null;
+  }, [appId, applications]);
+
+  const [currentStep, setCurrentStep] = useState(isRectifyMode ? 3 : 1);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -91,6 +100,7 @@ export default function CitizenApply() {
   });
   const [materials, setMaterials] = useState<MaterialItem[]>([]);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [rectifyTips, setRectifyTips] = useState<string[]>([]);
 
   const selectedService = useMemo(
     () => serviceList.find((s) => s.id === selectedServiceId) || null,
@@ -103,6 +113,28 @@ export default function CitizenApply() {
   }, [selectedCategory]);
 
   useEffect(() => {
+    if (isRectifyMode && originalApp) {
+      const found = serviceList.find(
+        (s) => s.id === originalApp.serviceItemId || s.name === originalApp.serviceItemName
+      );
+      if (found) {
+        setSelectedServiceId(found.id);
+        setSelectedCategory(found.category);
+      }
+      setFormData({
+        name: originalApp.applicantName,
+        idCard: currentUser?.idCard || '',
+        phone: originalApp.applicantPhone,
+        address: '',
+      });
+      if (originalApp.precheckResult) {
+        setRectifyTips(originalApp.precheckResult.suggestions || []);
+      } else {
+        setRectifyTips(['请根据审核意见补正材料后重新提交']);
+      }
+      return;
+    }
+
     const serviceName = searchParams.get('service');
     const category = searchParams.get('category');
     if (category) {
@@ -126,9 +158,16 @@ export default function CitizenApply() {
         }
       }
     }
-  }, [searchParams]);
+  }, [searchParams, isRectifyMode, originalApp, currentUser]);
 
   useEffect(() => {
+    if (selectedService && isRectifyMode && originalApp && originalApp.materials.length > 0) {
+      setMaterials([...originalApp.materials]);
+      setShowPrecheckResult(false);
+      setOcrProgress(0);
+      return;
+    }
+
     if (selectedService) {
       const newMaterials: MaterialItem[] = selectedService.requiredMaterials.map((name, index) => ({
         id: `mat-${selectedService.id}-${index}`,
@@ -141,7 +180,7 @@ export default function CitizenApply() {
       setShowPrecheckResult(false);
       setOcrProgress(0);
     }
-  }, [selectedServiceId, selectedService]);
+  }, [selectedServiceId, selectedService, isRectifyMode, originalApp]);
 
   const precheckResult: PrecheckResult = useMemo(() => {
     const missingMaterials: string[] = [];
@@ -248,6 +287,49 @@ export default function CitizenApply() {
 
   const handleSubmit = () => {
     if (!currentUser || !selectedService) return;
+
+    if (isRectifyMode && appId && originalApp) {
+      updateApplication(appId, {
+        materials,
+        precheckResult,
+        status: precheckResult.isComplete ? ('pending' as const) : ('reviewing' as const),
+      });
+
+      updateApplicationFlowNode(appId, 'node-review', {
+        status: 'pending',
+        assigneeName: '李晓婷',
+      });
+
+      addNotification({
+        userId: currentUser.id,
+        type: 'inapp',
+        title: '材料补正提交成功',
+        content: `您的「${originalApp.serviceItemName}」补正材料已提交，办件号：${originalApp.caseNo}，工作人员将重新审核。`,
+        relatedId: appId,
+      });
+
+      addNotification({
+        userId: currentUser.id,
+        type: 'sms',
+        title: '【一网通办】材料补正已提交',
+        content: `您的办件「${originalApp.serviceItemName}」（${originalApp.caseNo}）补正材料已提交，请等待审核结果。`,
+        relatedId: appId,
+      });
+
+      addNotification({
+        userId: 'u002',
+        type: 'inapp',
+        title: '办件补正待审核',
+        content: `办件「${originalApp.serviceItemName}」（${originalApp.caseNo}）已补正材料，请重新审核。申请人：${originalApp.applicantName}`,
+        relatedId: appId,
+      });
+
+      setSubmitSuccess(true);
+      setTimeout(() => {
+        navigate(`/citizen/applications/${appId}`);
+      }, 2000);
+      return;
+    }
 
     const caseNo = `YW${new Date().getFullYear()}${String(Date.now()).slice(-8)}`;
     const days = selectedService.processingDays;
@@ -373,8 +455,14 @@ export default function CitizenApply() {
           >
             <CheckCircle2 className="h-12 w-12 text-white" />
           </motion.div>
-          <h2 className="mb-2 text-2xl font-bold text-gray-800">提交成功！</h2>
-          <p className="text-gray-500">您的{selectedService?.name}申请已提交，即将跳转到我的办件...</p>
+          <h2 className="mb-2 text-2xl font-bold text-gray-800">
+            {isRectifyMode ? '补正提交成功！' : '提交成功！'}
+          </h2>
+          <p className="text-gray-500">
+            {isRectifyMode
+              ? `您的${originalApp?.serviceItemName}补正材料已提交，即将跳转到办件详情...`
+              : `您的${selectedService?.name}申请已提交，即将跳转到我的办件...`}
+          </p>
         </motion.div>
       </div>
     );
@@ -395,9 +483,50 @@ export default function CitizenApply() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-6"
         >
-          <h1 className="text-2xl font-bold text-primary-700">事项申请</h1>
-          <p className="mt-1 text-gray-500">在线办理政务服务事项，智能预审让您少跑腿</p>
+          <h1 className="text-2xl font-bold text-primary-700">
+            {isRectifyMode ? '材料补正' : '事项申请'}
+          </h1>
+          <p className="mt-1 text-gray-500">
+            {isRectifyMode ? '根据审核意见补正材料，重新提交审核' : '在线办理政务服务事项，智能预审让您少跑腿'}
+          </p>
         </motion.div>
+
+        {isRectifyMode && originalApp && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="mb-6 rounded-2xl border-0 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 p-5 shadow-gov"
+          >
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 flex-shrink-0 flex items-center justify-center rounded-full bg-amber-100 text-amber-600">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-800">办件补正提醒</h3>
+                <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <span className="text-amber-600">办件号：</span>
+                    <span className="font-medium text-amber-900">{originalApp.caseNo}</span>
+                  </div>
+                  <div>
+                    <span className="text-amber-600">事项名称：</span>
+                    <span className="font-medium text-amber-900">{originalApp.serviceItemName}</span>
+                  </div>
+                </div>
+                {rectifyTips.length > 0 && (
+                  <div className="mt-2">
+                  <p className="text-sm text-amber-600">补正建议：</p>
+                  <ul className="mt-1 list-disc pl-5 text-sm text-amber-800">
+                    {rectifyTips.map((tip, idx) => (
+                      <li key={idx}>{tip}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}</div>
+            </div>
+          </motion.div>
+        )}
 
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -451,14 +580,15 @@ export default function CitizenApply() {
         </motion.div>
 
         <div className="grid gap-6 lg:grid-cols-4">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-            className="lg:col-span-1"
-          >
-            <div className="rounded-2xl bg-white p-4 shadow-gov">
-              <h3 className="mb-4 px-2 text-lg font-semibold text-gray-800">事项分类</h3>
+          {!isRectifyMode && (
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2 }}
+              className="lg:col-span-1"
+            >
+              <div className="rounded-2xl bg-white p-4 shadow-gov">
+                <h3 className="mb-4 px-2 text-lg font-semibold text-gray-800">事项分类</h3>
               <div className="space-y-1">
                 {categories.map((cat) => (
                   <motion.button
@@ -479,13 +609,14 @@ export default function CitizenApply() {
                 ))}
               </div>
             </div>
-          </motion.div>
+            </motion.div>
+          )}
 
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.3 }}
-            className="lg:col-span-3"
+            className={isRectifyMode ? 'lg:col-span-4' : 'lg:col-span-3'}
           >
             <div className="rounded-2xl bg-white p-6 shadow-gov">
               <AnimatePresence mode="wait">
@@ -913,21 +1044,33 @@ export default function CitizenApply() {
               </AnimatePresence>
 
               <div className="mt-8 flex justify-between border-t border-gray-100 pt-6">
-                <motion.button
-                  whileHover={currentStep > 1 ? { x: -4 } : {}}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
-                  disabled={currentStep === 1}
-                  className={cn(
-                    'flex items-center space-x-2 rounded-xl px-6 py-3 transition-all',
-                    currentStep === 1
-                      ? 'cursor-not-allowed bg-gray-100 text-gray-400'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                  )}
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                  <span>上一步</span>
-                </motion.button>
+                {isRectifyMode && currentStep === 3 ? (
+                  <motion.button
+                    whileHover={{ x: -4 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => navigate(`/citizen/applications/${appId}`)}
+                    className="flex items-center space-x-2 rounded-xl px-6 py-3 bg-gray-100 text-gray-700 hover:bg-gray-200 transition-all"
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                    <span>返回详情</span>
+                  </motion.button>
+                ) : (
+                  <motion.button
+                    whileHover={currentStep > 1 ? { x: -4 } : {}}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={() => setCurrentStep(Math.max(1, currentStep - 1))}
+                    disabled={currentStep === 1}
+                    className={cn(
+                      'flex items-center space-x-2 rounded-xl px-6 py-3 transition-all',
+                      currentStep === 1
+                        ? 'cursor-not-allowed bg-gray-100 text-gray-400'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    )}
+                  >
+                    <ChevronLeft className="h-5 w-5" />
+                    <span>上一步</span>
+                  </motion.button>
+                )}
 
                 {currentStep < 5 ? (
                   <motion.button
@@ -959,7 +1102,7 @@ export default function CitizenApply() {
                     )}
                   >
                     <Send className="h-5 w-5" />
-                    <span>提交申请</span>
+                    <span>{isRectifyMode ? '提交补正' : '提交申请'}</span>
                   </motion.button>
                 )}
               </div>

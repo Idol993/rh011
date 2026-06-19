@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useEffect } from 'react';
 import AppLayout from '@/components/layout/AppLayout';
 import Dashboard from '@/pages/Dashboard';
@@ -62,6 +62,17 @@ function RoleRedirect() {
   return null;
 }
 
+function RedirectWithParams({ to }: { to: string }) {
+  const params = useParams();
+  let target = to;
+  Object.entries(params).forEach(([key, value]) => {
+    if (value) {
+      target = target.replace(`:${key}`, value);
+    }
+  });
+  return <Navigate to={target} replace />;
+}
+
 export default function App() {
   return (
     <Router>
@@ -75,12 +86,12 @@ export default function App() {
         <Route path="/app/citizen" element={<Navigate to="/citizen" replace />} />
         <Route path="/app/citizen/apply" element={<Navigate to="/citizen/apply" replace />} />
         <Route path="/app/citizen/applications" element={<Navigate to="/citizen/applications" replace />} />
-        <Route path="/app/citizen/applications/:id" element={<Navigate to="/citizen/applications/:id" replace />} />
-        <Route path="/app/citizen/review/:id" element={<Navigate to="/citizen/review/:id" replace />} />
+        <Route path="/app/citizen/applications/:id" element={<RedirectWithParams to="/citizen/applications/:id" />} />
+        <Route path="/app/citizen/review/:id" element={<RedirectWithParams to="/citizen/review/:id" />} />
         <Route path="/app/citizen/certificates" element={<Navigate to="/citizen/certificates" replace />} />
         <Route path="/app/workbench" element={<Navigate to="/workbench" replace />} />
         <Route path="/app/workbench/cases" element={<Navigate to="/workbench/cases" replace />} />
-        <Route path="/app/workbench/cases/:id" element={<Navigate to="/workbench/cases/:id" replace />} />
+        <Route path="/app/workbench/cases/:id" element={<RedirectWithParams to="/workbench/cases/:id" />} />
         <Route path="/app/workbench/parallel" element={<Navigate to="/workbench/parallel" replace />} />
         <Route path="/app/supervisor" element={<Navigate to="/supervisor" replace />} />
         <Route path="/app/supervisor/warnings" element={<Navigate to="/supervisor/warnings" replace />} />
