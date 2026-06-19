@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Printer,
@@ -11,13 +12,21 @@ import {
   Clock,
   MapPin,
   Volume2,
+  ArrowLeft,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 
 export default function KioskHome() {
+  const navigate = useNavigate();
   const [isScanning, setIsScanning] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [activeFeature, setActiveFeature] = useState<number | null>(null);
+
+  const handleFeatureClick = (title: string) => {
+    if (title === '打印证明') {
+      navigate('/kiosk/print');
+    }
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -72,7 +81,8 @@ export default function KioskHome() {
     setIsScanning(true);
     setTimeout(() => {
       setIsScanning(false);
-    }, 3000);
+      navigate('/kiosk/print');
+    }, 2500);
   };
 
   return (
@@ -164,6 +174,7 @@ export default function KioskHome() {
                   whileTap={{ scale: 0.98 }}
                   onHoverStart={() => setActiveFeature(index)}
                   onHoverEnd={() => setActiveFeature(null)}
+                  onClick={() => handleFeatureClick(feature.title)}
                   className={`group relative overflow-hidden rounded-3xl p-8 md:p-10 text-left transition-all duration-300 ${
                     activeFeature === index ? `shadow-2xl ${feature.shadow}` : ''
                   }`}

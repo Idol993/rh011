@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -10,6 +11,9 @@ import {
   AlertTriangle,
   ChevronRight,
   ClipboardList,
+  Star,
+  Eye,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAppStore } from '@/store';
 import type { Application, ApplicationStatus } from '@/types';
@@ -66,9 +70,20 @@ const getRemainingDays = (deadline: string) => {
 };
 
 export default function CitizenApplications() {
-  const { applications } = useAppStore();
+  const { applications, reviews } = useAppStore();
+  const navigate = useNavigate();
   const [searchText, setSearchText] = useState('');
   const [activeFilter, setActiveFilter] = useState<ApplicationStatus | 'all'>('all');
+
+  const isReviewed = (appId: string) => reviews.some((r) => r.applicationId === appId);
+
+  const handleCardClick = (app: Application) => {
+    if (app.status === 'completed' && !isReviewed(app.id)) {
+      navigate(`/citizen/review/${app.id}`);
+    } else {
+      navigate(`/citizen/applications/${app.id}`);
+    }
+  };
 
   const filteredApplications = useMemo(() => {
     return applications
@@ -168,11 +183,12 @@ export default function CitizenApplications() {
                     key={app.id}
                     variants={cardVariants}
                     whileHover={{ y: -4, scale: 1.005 }}
+                    onClick={() => handleCardClick(app)}
                     className="group cursor-pointer overflow-hidden rounded-2xl bg-white shadow-gov transition-shadow hover:shadow-gov-hover"
                   >
                     <div className="p-5">
                       <div className="flex items-start justify-between">
-                        <div className="flex items-start space-x-4">
+                        <div className="flex items-start space-x-4 flex-1 min-w-0">
                           <div
                             className={cn(
                               'flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl',
@@ -278,6 +294,44 @@ export default function CitizenApplications() {
                           </div>
                         </div>
                       )}
+
+                      <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {app.status === 'completed' && !isReviewed(app.id) ? (
+                            <motion.button
+                              whileHover={{ scale: 1.03 }}
+                              whileTap={{ scale: 0.97 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/citizen/review/${app.id}`);
+                              }}
+                              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-sm font-semibold shadow-md shadow-amber-500/30 hover:shadow-amber-500/40"
+                            >
+                              <Star className="w-4 h-4" />
+                              立即评价
+                            </motion.button>
+                          ) : null}
+                          {app.status === 'completed' && isReviewed(app.id) && (
+                            <span className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-green-50 text-green-600 text-xs font-medium">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              已评价
+                            </span>
+                          )}
+                        </div>
+                        <motion.button
+                          whileHover={{ scale: 1.03 }}
+                          whileTap={{ scale: 0.97 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/citizen/applications/${app.id}`);
+                          }}
+                          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-50 text-primary-600 text-sm font-medium hover:bg-primary-100 transition-colors"
+                        >
+                          <Eye className="w-4 h-4" />
+                          查看详情
+                          <ChevronRight className="w-4 h-4" />
+                        </motion.button>
+                      </div>
                     </div>
                   </motion.div>
                 );

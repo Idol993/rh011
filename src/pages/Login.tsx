@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { ShieldCheck, User, Lock, LogIn } from 'lucide-react';
 import { useAppStore } from '@/store';
@@ -7,13 +8,42 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const login = useAppStore((state) => state.login);
+  const currentUser = useAppStore((state) => state.currentUser);
   const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const from = (location.state as { from?: Location })?.from || null;
+
+  useEffect(() => {
+    if (currentUser) {
+      let targetPath = '/citizen';
+      switch (currentUser.role) {
+        case 'citizen':
+          targetPath = '/citizen';
+          break;
+        case 'clerk':
+        case 'manager':
+          targetPath = '/workbench';
+          break;
+        case 'supervisor':
+          targetPath = '/supervisor';
+          break;
+      }
+      navigate(from?.pathname || targetPath, { replace: true });
+    }
+  }, [currentUser, navigate, from]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const success = login(username, password);
+    setError('');
+    if (!username.trim() || !password.trim()) {
+      setError('请输入用户名和密码');
+      return;
+    }
+    const success = login(username.trim(), password);
     if (!success) {
-      setError('用户名或密码错误');
+      setError('用户名或密码错误，请重试');
     }
   };
 

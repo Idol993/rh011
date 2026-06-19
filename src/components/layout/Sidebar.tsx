@@ -51,9 +51,9 @@ const supervisorMenus: MenuItem[] = [
   { path: '/supervisor/performance', label: '绩效统计', icon: BarChart3, roles: ['supervisor'] },
 ];
 
-const shortcutMenus: MenuItem[] = [
-  { path: '/dashboard', label: '数据大屏', icon: Presentation, roles: ['citizen', 'clerk', 'manager', 'supervisor'] },
-  { path: '/kiosk', label: '自助终端', icon: MonitorPlay, roles: ['citizen', 'clerk', 'manager', 'supervisor'] },
+const shortcutMenus: { label: string; icon: React.ComponentType<{ className?: string }>; roles: UserRole[]; onClick: () => void }[] = [
+  { label: '数据大屏', icon: Presentation, roles: ['citizen', 'clerk', 'manager', 'supervisor'], onClick: () => window.open('/dashboard', '_blank') },
+  { label: '自助终端', icon: MonitorPlay, roles: ['citizen', 'clerk', 'manager', 'supervisor'], onClick: () => window.open('/kiosk', '_blank') },
 ];
 
 export default function Sidebar() {
@@ -112,7 +112,7 @@ export default function Sidebar() {
             relative flex items-center gap-3 px-4 py-3 rounded-xl mb-1
             transition-all duration-200 group
             ${active
-              ? 'bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/30'
+              ? 'bg-gradient-to-r from-primary-600 to-primary-500 text-white shadow-lg shadow-primary-500/30'
               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             }
             ${collapsed ? 'justify-center px-2' : ''}
@@ -139,6 +139,48 @@ export default function Sidebar() {
             )}
           </AnimatePresence>
         </NavLink>
+      </motion.div>
+    );
+  };
+
+  const renderShortcutItem = (
+    item: { label: string; icon: React.ComponentType<{ className?: string }>; onClick: () => void },
+    index: number,
+    sectionKey: string,
+  ) => {
+    const Icon = item.icon;
+    return (
+      <motion.div
+        key={`${sectionKey}-${item.label}`}
+        custom={index}
+        initial="hidden"
+        animate="visible"
+        variants={menuItemVariants}
+      >
+        <button
+          onClick={item.onClick}
+          className={`
+            relative w-full flex items-center gap-3 px-4 py-3 rounded-xl mb-1
+            transition-all duration-200 group text-slate-600 hover:bg-slate-100 hover:text-slate-900
+            ${collapsed ? 'justify-center px-2' : ''}
+          `}
+        >
+          <Icon className="w-5 h-5 flex-shrink-0 group-hover:scale-110 transition-transform" />
+          <AnimatePresence>
+            {!collapsed && (
+              <motion.span
+                initial={{ opacity: 0, width: 0 }}
+                animate={{ opacity: 1, width: 'auto' }}
+                exit={{ opacity: 0, width: 0 }}
+                transition={{ duration: 0.2 }}
+                className="text-sm font-medium whitespace-nowrap overflow-hidden"
+              >
+                {item.label}
+                <span className="ml-1 text-xs text-slate-400">↗</span>
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </button>
       </motion.div>
     );
   };
@@ -189,7 +231,7 @@ export default function Sidebar() {
             </div>
           )}
           <nav className="space-y-1">
-            {shortcutMenus.map((item, i) => renderMenuItem(item, i, 'shortcut'))}
+            {shortcutMenus.map((item, i) => renderShortcutItem(item, i, 'shortcut'))}
           </nav>
         </div>
       </div>
