@@ -1,5 +1,5 @@
 import { useAppStore } from '@/store';
-import type { MaterialItem, FlowNode, FlowNodeStatus, ParallelGroup } from '@/types';
+import type { MaterialItem, FlowNode, FlowNodeStatus, ParallelGroup, Certificate, BlockchainRecord } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   User,
@@ -23,6 +23,9 @@ import {
   Loader2,
   Circle,
   MessageSquare,
+  Award,
+  ShieldCheck,
+  Link2,
 } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useState } from 'react';
@@ -35,6 +38,7 @@ const statusDisplay: Record<string, { label: string; className: string }> = {
   pending: { label: '待签发', className: 'bg-amber-100 text-amber-700' },
   reviewing: { label: '审核中', className: 'bg-indigo-100 text-indigo-700' },
   approved: { label: '已通过', className: 'bg-green-100 text-green-700' },
+  making: { label: '待制证', className: 'bg-orange-100 text-orange-700' },
   rejected: { label: '已驳回', className: 'bg-red-100 text-red-700' },
   completed: { label: '已完成', className: 'bg-emerald-100 text-emerald-700' },
 };
@@ -324,7 +328,15 @@ function ParallelProgressPanel({
 export default function CaseDetail() {
   const navigate = useNavigate();
   const { id = '' } = useParams<{ id: string }>();
-  const { applications, updateApplicationStatus, currentUser, addNotification } = useAppStore();
+  const {
+    applications,
+    updateApplicationStatus,
+    currentUser,
+    addNotification,
+    addCertificate,
+    addBlockchainRecord,
+    updateApplicationFlowNode,
+  } = useAppStore();
 
   const [comment, setComment] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -335,25 +347,93 @@ export default function CaseDetail() {
     if (!application || !currentUser) return;
     setActionLoading(action);
 
-    setTimeout(() => {
-      const statusMap: Record<string, 'approved' | 'reviewing' | 'rejected'> = {
-        approve: 'approved',
-        rectify: 'reviewing',
-        reject: 'rejected',
-      };
-      updateApplicationStatus(application.id, statusMap[action]);
-      addNotification({
-        userId: application.applicantId,
-        type: 'inapp',
-        title: action === 'approve' ? '审批通过' : action === 'rectify' ? '需补正材料' : '审批驳回',
-        content: `您的办件「${application.serviceItemName}」${
-          action === 'approve' ? '已通过审批' : action === 'rectify' ? '需要补正材料' : '已被驳回'
-        }。${comment ? `意见：${comment}` : ''}`,
-        relatedId: application.id,
+    if (action === 'approve') {
+      updateApplicationStatus(application.id, 'making');
+      updateApplicationFlowNode(application.id, 'node-review', {
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        assigneeName: currentUser.name,
+        comment: comment || '材料齐全，符合办理条件，准予通过。',
       });
-      setActionLoading(null);
-      setComment('');
-    }, 600);
+
+      setTimeout(() => {
+        const newCert: Certificate = {
+          id: `cert-${Date.now()}`,
+          certificateNo: `CERT${Date.now().toString().slice(-10)}`,
+          type: application.serviceItemName,
+          holderName: application.applicantName,
+          applicationId: application.id,
+          issuedAt: new Date().toISOString(),
+          validUntil: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+          issuer: application.serviceItemName.includes('不动产') ? '自然资源局' : '市场监督管理局',
+          isVerified: true,
+          status: 'valid',
+        };
+        addCertificate(newCert);
+
+        addBlockchainRecord({
+          dataType: 'certificate',
+          dataRef: newCert.id,
+          dataHash: `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`,
+          operator: currentUser.name,
+          operatorId: currentUser.id,
+        });
+
+        updateApplicationStatus(application.id, 'completed');
+        updateApplicationFlowNode(application.id, 'node-review', {
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+        });
+
+        const nowStr = new Date().toLocaleString('zh-CN');
+        addNotification({
+          userId: application.applicantId,
+          type: 'inapp',
+          title: '电子证照已生成',
+          content: `您的「${application.serviceItemName}」电子证照已生成并上链存证，存证时间：${nowStr}。可在电子证照中心查看下载。`,
+          relatedId: newCert.id,
+        });
+
+        addNotification({
+          userId: application.applicantId,
+          type: 'sms',
+          title: '【一网通办】办件已办结',
+          content: `您的办件「${application.serviceItemName}」（${application.caseNo}）已办结，电子证照已上链存证，请注意查收。`,
+          relatedId: application.id,
+        });
+
+        setActionLoading(null);
+        setComment('');
+      }, 1800);
+    } else {
+      setTimeout(() => {
+        const statusMap: Record<string, 'reviewing' | 'rejected'> = {
+          rectify: 'reviewing',
+          reject: 'rejected',
+        };
+        updateApplicationStatus(application.id, statusMap[action]);
+        addNotification({
+          userId: application.applicantId,
+          type: 'inapp',
+          title: action === 'rectify' ? '需补正材料' : '审批驳回',
+          content: `您的办件「${application.serviceItemName}」${
+            action === 'rectify' ? '需要补正材料' : '已被驳回'
+          }。${comment ? `意见：${comment}` : ''}`,
+          relatedId: application.id,
+        });
+        if (action === 'rectify') {
+          addNotification({
+            userId: application.applicantId,
+            type: 'sms',
+            title: '【一网通办】办件需补正',
+            content: `您的办件「${application.serviceItemName}」（${application.caseNo}）需要补充材料，请尽快登录系统补正。`,
+            relatedId: application.id,
+          });
+        }
+        setActionLoading(null);
+        setComment('');
+      }, 600);
+    }
   };
 
   if (!application) {

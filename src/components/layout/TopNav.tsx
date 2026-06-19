@@ -154,13 +154,36 @@ export default function TopNav() {
                   ) : (
                       notifications.map((notif, index) => {
                         const Icon = getNotificationIcon(notif.title);
+                        const handleNotifClick = () => {
+                          markAsRead(notif.id);
+                          setShowNotifications(false);
+                          if (notif.relatedId) {
+                            if (notif.type === 'sms' && notif.title.includes('办件')) {
+                              if (currentUser?.role === 'citizen') {
+                                navigate(`/citizen/applications/${notif.relatedId}`);
+                              } else {
+                                navigate(`/workbench/cases/${notif.relatedId}`);
+                              }
+                            } else if (notif.title.includes('证照')) {
+                              navigate('/citizen/certificates');
+                            } else if (notif.title.includes('补正')) {
+                              navigate(`/citizen/applications/${notif.relatedId}`);
+                            } else if (notif.title.includes('办件') || notif.title.includes('审批') || notif.title.includes('受理')) {
+                              if (currentUser?.role === 'citizen') {
+                                navigate(`/citizen/applications/${notif.relatedId}`);
+                              } else {
+                                navigate(`/workbench/cases/${notif.relatedId}`);
+                              }
+                            }
+                          }
+                        };
                         return (
                           <motion.div
                             key={notif.id}
                             initial={{ opacity: 0, x: -10 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: index * 0.03 }}
-                            onClick={() => markAsRead(notif.id)}
+                            onClick={handleNotifClick}
                             className={`
                               flex gap-3 px-5 py-4 cursor-pointer transition-colors
                               ${notif.isRead ? 'bg-white' : 'bg-blue-50/50'}

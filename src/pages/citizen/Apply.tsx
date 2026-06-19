@@ -72,7 +72,7 @@ const mockNlpIncomplete: NlpAnalysis = {
 export default function CitizenApply() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { addApplication, currentUser, applications } = useAppStore();
+  const { addApplication, currentUser, applications, addNotification } = useAppStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingMaterialId, setUploadingMaterialId] = useState<string | null>(null);
 
@@ -110,11 +110,20 @@ export default function CitizenApply() {
     }
     if (serviceName) {
       const found = serviceList.find(
-        (s) => s.name.includes(serviceName) || s.category === serviceName
+        (s) =>
+          s.name.includes(serviceName) ||
+          s.category === serviceName ||
+          serviceName.includes(s.category) ||
+          serviceName.includes(s.name.replace('办理', '').replace('登记', ''))
       );
       if (found) {
         setSelectedServiceId(found.id);
         setSelectedCategory(found.category);
+      } else if (category) {
+        const byCategory = serviceList.find((s) => s.category === category);
+        if (byCategory) {
+          setSelectedServiceId(byCategory.id);
+        }
       }
     }
   }, [searchParams]);
@@ -252,7 +261,7 @@ export default function CitizenApply() {
       assignees.push({ id: 'clerk-002', name: '王建国', department: '住房和城乡建设局', role: 'clerk' as const });
     }
 
-    addApplication({
+    const newAppData = {
       caseNo,
       serviceItemId: selectedService.id,
       serviceItemName: selectedService.name,
@@ -260,7 +269,7 @@ export default function CitizenApply() {
       applicantName: currentUser.name,
       applicantPhone: currentUser.phone,
       materials,
-      status: precheckResult.isComplete ? 'submitted' : 'draft',
+      status: precheckResult.isComplete ? ('submitted' as const) : ('draft' as const),
       precheckResult,
       assignees,
       currentStep: 5,
@@ -286,12 +295,52 @@ export default function CitizenApply() {
       ],
       deadline: deadline.toLocaleDateString('zh-CN'),
       warningLevel: 'none' as const,
+    };
+    addApplication(newAppData);
+
+    const latestApps = useAppStore.getState().applications;
+    const newApp = latestApps[0];
+    const newAppId = newApp.id;
+    const expectedDeadline = deadline.toLocaleDateString('zh-CN');
+
+    addNotification({
+      userId: currentUser.id,
+      type: 'inapp',
+      title: '办件提交成功',
+      content: `您的「${selectedService.name}」已提交成功，办件号：${caseNo}，预计办结时间：${expectedDeadline}`,
+      relatedId: newAppId,
     });
+
+    addNotification({
+      userId: currentUser.id,
+      type: 'sms',
+      title: '【一网通办】办件提交成功',
+      content: `您的办件「${selectedService.name}」（${caseNo}）已受理，预计${expectedDeadline}前办结，点击查看详情。`,
+      relatedId: newAppId,
+    });
+
+    addNotification({
+      userId: 'u002',
+      type: 'inapp',
+      title: '新办件待受理',
+      content: `收到新办件「${selectedService.name}」（${caseNo}），请及时受理。申请人：${currentUser.name}`,
+      relatedId: newAppId,
+    });
+
+    if (selectedService.isParallel) {
+      addNotification({
+        userId: 'u003',
+        type: 'inapp',
+        title: '并联审批新办件',
+        content: `并联审批事项「${selectedService.name}」（${caseNo}）已启动，请同步开展审批工作。`,
+        relatedId: newAppId,
+      });
+    }
 
     setSubmitSuccess(true);
     setTimeout(() => {
       navigate('/citizen/applications');
-    }, 2000);
+    }, 2500);
   };
 
   const resetPrecheck = () => {

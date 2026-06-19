@@ -29,6 +29,7 @@ export type ApplicationStatus =
   | 'pending'
   | 'reviewing'
   | 'approved'
+  | 'making'
   | 'rejected'
   | 'completed';
 
@@ -120,6 +121,7 @@ export interface Certificate {
   issuer: string;
   blockchainTx?: string;
   blockchainHash?: string;
+  chainTime?: string;
   isVerified: boolean;
   status: CertificateStatus;
 }
@@ -132,6 +134,9 @@ export interface BlockchainRecord {
   previousHash: string;
   dataType: BlockchainDataType;
   dataRef: string;
+  dataHash: string;
+  operator: string;
+  operatorId: string;
   timestamp: string;
   nodeSignature: string;
 }

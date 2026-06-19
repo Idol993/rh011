@@ -35,6 +35,7 @@ const statusLabelMap: Record<ApplicationStatus, string> = {
   pending: '办理中',
   reviewing: '审核中',
   approved: '已批准',
+  making: '待制证',
   rejected: '已驳回',
   completed: '已办结',
 };
@@ -46,6 +47,7 @@ const statusColorMap: Record<ApplicationStatus, string> = {
   pending: 'bg-amber-50 text-amber-600',
   reviewing: 'bg-indigo-50 text-indigo-600',
   approved: 'bg-green-50 text-green-600',
+  making: 'bg-orange-50 text-orange-600',
   rejected: 'bg-red-50 text-red-600',
   completed: 'bg-emerald-50 text-emerald-600',
 };
@@ -78,7 +80,9 @@ export default function CitizenApplications() {
   const isReviewed = (appId: string) => reviews.some((r) => r.applicationId === appId);
 
   const handleCardClick = (app: Application) => {
-    if (app.status === 'completed' && !isReviewed(app.id)) {
+    if (app.status === 'reviewing') {
+      navigate(`/citizen/apply?service=${encodeURIComponent(app.serviceItemName)}&category=&id=${app.id}&action=rectify`);
+    } else if (app.status === 'completed' && !isReviewed(app.id)) {
       navigate(`/citizen/review/${app.id}`);
     } else {
       navigate(`/citizen/applications/${app.id}`);

@@ -235,6 +235,18 @@ export default function CitizenCertificates() {
                           className="overflow-hidden"
                         >
                           <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
+                            {cert.chainTime && (
+                              <div>
+                                <p className="mb-1 text-xs text-gray-500">上链存证时间</p>
+                                <div className="flex items-center space-x-2 rounded-lg bg-gray-50 px-3 py-2">
+                                  <Clock className="h-4 w-4 text-primary-500" />
+                                  <code className="font-mono text-xs text-gray-700">
+                                    {new Date(cert.chainTime).toLocaleString('zh-CN')}
+                                  </code>
+                                </div>
+                              </div>
+                            )}
+
                             <div>
                               <p className="mb-1 text-xs text-gray-500">交易哈希</p>
                               <div className="flex items-center space-x-2 rounded-lg bg-gray-50 px-3 py-2">

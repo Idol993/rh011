@@ -8,6 +8,8 @@ import {
   Notification,
   ApplicationStatus,
   PrintLog,
+  BlockchainRecord,
+  FlowNode,
 } from '@/types';
 import { mockData } from '@/data/mockData';
 
@@ -24,6 +26,7 @@ interface ApplicationState {
   setCurrentApplication: (application: Application | null) => void;
   addApplication: (application: Omit<Application, 'id' | 'createdAt'>) => void;
   updateApplicationStatus: (id: string, status: ApplicationStatus) => void;
+  updateApplicationFlowNode: (appId: string, nodeId: string, updates: Partial<FlowNode>) => void;
 }
 
 interface WarningState {
@@ -37,6 +40,11 @@ interface CertificateState {
   setCertificates: (certificates: Certificate[]) => void;
   addCertificate: (certificate: Certificate) => void;
   verifyCertificate: (id: string) => void;
+}
+
+interface BlockchainState {
+  blockchainRecords: BlockchainRecord[];
+  addBlockchainRecord: (record: Omit<BlockchainRecord, 'id' | 'timestamp' | 'hash' | 'previousHash' | 'nodeSignature'>) => void;
 }
 
 interface ReviewState {
@@ -62,6 +70,7 @@ type AppStore = AuthState &
   ApplicationState &
   WarningState &
   CertificateState &
+  BlockchainState &
   ReviewState &
   NotificationState &
   PrintLogState;
@@ -72,6 +81,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   currentApplication: null,
   warnings: mockData.warnings ?? [],
   certificates: mockData.certificates ?? [],
+  blockchainRecords: mockData.blockchainRecords ?? [],
   reviews: mockData.reviews ?? [],
   notifications: mockData.notifications ?? [],
   unreadCount: mockData.notifications?.filter((n) => !n.isRead).length ?? 0,
@@ -126,6 +136,30 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }));
   },
 
+  updateApplicationFlowNode: (appId: string, nodeId: string, updates: Partial<FlowNode>) => {
+    set((state) => ({
+      applications: state.applications.map((app) =>
+        app.id === appId
+          ? {
+              ...app,
+              flowNodes: app.flowNodes.map((node) =>
+                node.id === nodeId ? { ...node, ...updates } : node
+              ),
+            }
+          : app
+      ),
+      currentApplication:
+        state.currentApplication?.id === appId
+          ? {
+              ...state.currentApplication,
+              flowNodes: state.currentApplication.flowNodes.map((node) =>
+                node.id === nodeId ? { ...node, ...updates } : node
+              ),
+            }
+          : state.currentApplication,
+    }));
+  },
+
   setWarnings: (warnings: Warning[]) => {
     set({ warnings });
   },
@@ -160,6 +194,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set((state) => ({
       certificates: state.certificates.map((c) =>
         c.id === id ? { ...c, isVerified: true } : c
+      ),
+    }));
+  },
+
+  addBlockchainRecord: (record: Omit<BlockchainRecord, 'id' | 'timestamp' | 'hash' | 'previousHash' | 'nodeSignature'>) => {
+    const lastRecord = get().blockchainRecords[get().blockchainRecords.length - 1];
+    const previousHash = lastRecord?.hash || '0'.repeat(64);
+    const hash = `0x${Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('')}`;
+    const newRecord: BlockchainRecord = {
+      ...record,
+      previousHash,
+      hash,
+      id: `bc-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      nodeSignature: `sig-${Date.now()}`,
+    };
+    set((state) => ({
+      blockchainRecords: [...state.blockchainRecords, newRecord],
+      certificates: state.certificates.map((c) =>
+        c.id === record.dataRef
+          ? { ...c, blockchainHash: newRecord.hash, chainTime: newRecord.timestamp }
+          : c
       ),
     }));
   },
